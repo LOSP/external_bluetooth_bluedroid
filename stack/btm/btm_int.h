@@ -197,16 +197,18 @@ typedef struct
 
 #if BTM_BLE_CONFORMANCE_TESTING == TRUE
     BOOLEAN                 no_disc_if_pair_fail;
-    BOOLEAN			        enable_test_mac_val;
+    BOOLEAN                 enable_test_mac_val;
     BT_OCTET8               test_mac;
-    BOOLEAN			        enable_test_local_sign_cntr;
-    UINT32			        test_local_sign_cntr;
+    BOOLEAN                 enable_test_local_sign_cntr;
+    UINT32                  test_local_sign_cntr;
 #endif
 
 #if BLE_INCLUDED == TRUE
     tBTM_CMPL_CB        *p_le_test_cmd_cmpl_cb;   /* Callback function to be called when
                                                   LE test mode command has been sent successfully */
 #endif
+    tBTM_RSSI_MONITOR_CMD_CPL_CB p_rssi_monitor_cmd_cpl_cb; /* for rssi monitor command complete */
+    tBTM_RSSI_MONITOR_EVENT_CB   p_rssi_monitor_event_cb; /* for rssi threshold event */
 
 #endif  /* BLE_INCLUDED */
 
@@ -440,6 +442,8 @@ extern void     btm_accept_sco_link(UINT16 sco_inx, tBTM_ESCO_PARAMS *p_setup,
                                     tBTM_SCO_CB *p_conn_cb, tBTM_SCO_CB *p_disc_cb);
 extern void     btm_reject_sco_link(UINT16 sco_inx );
 extern void btm_sco_chk_pend_rolechange (UINT16 hci_handle);
+extern void btm_sco_disc_chk_pend_for_modechange (UINT16 hci_handle);
+
 #else
 #define btm_accept_sco_link(sco_inx, p_setup, p_conn_cb, p_disc_cb)
 #define btm_reject_sco_link(sco_inx)
@@ -554,7 +558,7 @@ typedef struct
     BOOLEAN     link_key_not_sent;      /* link key notification has not been sent waiting for name */
     UINT8       link_key_type;          /* Type of key used in pairing   */
     BOOLEAN     link_key_changed;       /* Changed link key during current connection */
-
+    UINT8       pin_key_len;            /* PIN key length of current pairing for Legacy devices */
 #define BTM_MAX_PRE_SM4_LKEY_TYPE   BTM_LKEY_TYPE_REMOTE_UNIT /* the link key type used by legacy pairing */
 
 #define BTM_SM4_UNKNOWN     0x00
@@ -616,7 +620,8 @@ enum
     BTM_PM_ST_HOLD    = BTM_PM_STS_HOLD,
     BTM_PM_ST_SNIFF   = BTM_PM_STS_SNIFF,
     BTM_PM_ST_PARK    = BTM_PM_STS_PARK,
-    BTM_PM_ST_PENDING = BTM_PM_STS_PENDING
+    BTM_PM_ST_PENDING = BTM_PM_STS_PENDING,
+    BTM_PM_ST_INVALID = 0xFF
 };
 typedef UINT8 tBTM_PM_STATE;
 
@@ -1002,6 +1007,8 @@ extern void btm_pm_proc_cmd_status(UINT8 status);
 extern void btm_pm_proc_mode_change (UINT8 hci_status, UINT16 hci_handle, UINT8 mode,
                                      UINT16 interval);
 extern void btm_pm_proc_ssr_evt (UINT8 *p, UINT16 evt_len);
+BTM_API extern tBTM_STATUS btm_read_power_mode_state (BD_ADDR remote_bda,
+                                                      tBTM_PM_STATE *pmState);
 #if BTM_SCO_INCLUDED == TRUE
 extern void btm_sco_chk_pend_unpark (UINT8 hci_status, UINT16 hci_handle);
 #else
@@ -1127,6 +1134,8 @@ extern  BOOLEAN btm_sec_find_bonded_dev (UINT8 start_idx, UINT8 *p_found_idx, tB
 extern BOOLEAN btm_sec_is_a_bonded_dev (BD_ADDR bda);
 extern BOOLEAN btm_sec_is_le_capable_dev (BD_ADDR bda);
 #endif /* BLE_INCLUDED */
+extern BOOLEAN btm_sec_is_a_paired_dev (BD_ADDR bda);
+extern void btm_sec_set_hid_as_paired (BD_ADDR bda, BOOLEAN paired);
 
 extern tINQ_DB_ENT *btm_inq_db_new (BD_ADDR p_bda);
 

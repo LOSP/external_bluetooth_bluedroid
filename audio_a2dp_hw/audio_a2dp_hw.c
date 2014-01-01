@@ -137,6 +137,7 @@ static const char* dump_a2dp_ctrl_event(char event)
         CASE_RETURN_STR(A2DP_CTRL_CMD_START)
         CASE_RETURN_STR(A2DP_CTRL_CMD_STOP)
         CASE_RETURN_STR(A2DP_CTRL_CMD_SUSPEND)
+        CASE_RETURN_STR(A2DP_CTRL_CMD_CHECK_STREAM_STARTED)
         default:
             return "UNKNOWN MSG ID";
     }
@@ -289,6 +290,10 @@ static int a2dp_command(struct a2dp_stream_out *out, char cmd)
 
     DEBUG("A2DP COMMAND %s DONE STATUS %d", dump_a2dp_ctrl_event(cmd), ack);
 
+    if (ack == A2DP_CTRL_ACK_INCALL_FAILURE)
+    {
+        return ack;
+    }
     if (ack != A2DP_CTRL_ACK_SUCCESS)
         return -1;
 
@@ -325,6 +330,7 @@ static void a2dp_stream_out_init(struct a2dp_stream_out *out)
 
 static int start_audio_datapath(struct a2dp_stream_out *out)
 {
+    int a2dp_status;
     int oldstate = out->state;
 
     INFO("state %d", out->state);
@@ -333,11 +339,17 @@ static int start_audio_datapath(struct a2dp_stream_out *out)
         return -1;
 
     out->state = AUDIO_A2DP_STATE_STARTING;
-
-    if (a2dp_command(out, A2DP_CTRL_CMD_START) < 0)
+    a2dp_status =  a2dp_command(out, A2DP_CTRL_CMD_START);
+    if (a2dp_status < 0)
     {
         ERROR("audiopath start failed");
 
+        out->state = oldstate;
+        return -1;
+    }
+    else if (a2dp_status == A2DP_CTRL_ACK_INCALL_FAILURE)
+    {
+        ERROR("audiopath start failed - In call a2dp, move to oldstate");
         out->state = oldstate;
         return -1;
     }
@@ -428,6 +440,19 @@ static int check_a2dp_ready(struct a2dp_stream_out *out)
 }
 
 
+static int check_a2dp_stream_started(struct a2dp_stream_out *out)
+{
+   INFO("state %d", out->state);
+
+   if (a2dp_command(out, A2DP_CTRL_CMD_CHECK_STREAM_STARTED) < 0)
+   {
+       DEBUG("Btif not in stream state");
+       return -1;
+   }
+   return 0;
+}
+
+
 /*****************************************************************************
 **
 **  audio output callbacks
@@ -442,9 +467,11 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
 
     DEBUG("write %d bytes (fd %d)", bytes, out->audio_fd);
 
+    pthread_mutex_lock(&out->lock);
     if (out->state == AUDIO_A2DP_STATE_SUSPENDED)
     {
         DEBUG("stream suspended");
+        pthread_mutex_unlock(&out->lock);
         return -1;
     }
 
@@ -452,8 +479,6 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
     if ((out->state == AUDIO_A2DP_STATE_STOPPED) ||
         (out->state == AUDIO_A2DP_STATE_STANDBY))
     {
-        pthread_mutex_lock(&out->lock);
-
         if (start_audio_datapath(out) < 0)
         {
             /* emulate time this write represents to avoid very fast write
@@ -468,13 +493,15 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
             return -1;
         }
 
-        pthread_mutex_unlock(&out->lock);
     }
     else if (out->state != AUDIO_A2DP_STATE_STARTED)
     {
         ERROR("stream not in stopped or standby");
+        pthread_mutex_unlock(&out->lock);
         return -1;
     }
+
+    pthread_mutex_unlock(&out->lock);
 
     sent = skt_write(out->audio_fd, buffer,  bytes);
 
@@ -482,7 +509,10 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
     {
         skt_disconnect(out->audio_fd);
         out->audio_fd = AUDIO_SKT_DISCONNECTED;
-        out->state = AUDIO_A2DP_STATE_STOPPED;
+        if (out->state != AUDIO_A2DP_STATE_SUSPENDED)
+            out->state = AUDIO_A2DP_STATE_STOPPED;
+        else
+            ERROR("write failed : stream suspended, avoid resetting state");
     }
 
     DEBUG("wrote %d bytes out of %d bytes", sent, bytes);
@@ -558,11 +588,12 @@ static int out_standby(struct audio_stream *stream)
     FNLOG();
 
     pthread_mutex_lock(&out->lock);
-
-    if (out->state == AUDIO_A2DP_STATE_STARTED)
+    /*Need not check State here as btif layer does
+    check of btif state , during remote initited suspend
+    DUT need to clear flag else start will not happen*/
+    /* Do nothing in SUSPENDED state. */
+    if (out->state != AUDIO_A2DP_STATE_SUSPENDED)
         retVal =  suspend_audio_datapath(out, true);
-    else
-        retVal = 0;
     pthread_mutex_unlock (&out->lock);
 
     return retVal;
@@ -610,6 +641,16 @@ static int out_set_parameters(struct audio_stream *stream, const char *kvpairs)
         {
             if (out->state == AUDIO_A2DP_STATE_STARTED)
                 retval = suspend_audio_datapath(out, false);
+            else
+            {
+                if (check_a2dp_stream_started(out) == 0)
+                   /*Btif and A2dp HAL state can be out of sync
+                    *check state of btif and suspend audio.
+                    *Happens when remote initiates start.*/
+                    retval = suspend_audio_datapath(out, false);
+                else
+                    out->state = AUDIO_A2DP_STATE_SUSPENDED;
+            }
         }
         else
         {

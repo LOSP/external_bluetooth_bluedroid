@@ -36,7 +36,7 @@
 #include "l2c_int.h"
 #include "btm_api.h"
 #include "btm_int.h"
-
+#include "bt_target.h"
 // btla-specific ++
 #define LOG_TAG "BTLD"
 #if (defined(ANDROID_APP_INCLUDED) && (ANDROID_APP_INCLUDED == TRUE) && (!defined(LINUX_NATIVE)) )
@@ -1657,7 +1657,7 @@ void btu_hcif_cmd_timeout (UINT8 controller_id)
     {
         BT_TRACE_1(TRACE_LAYER_HCI, TRACE_TYPE_ERROR,
                   "Num consecutive HCI Cmd tout =%d Restarting BT process",num_hci_cmds_timed_out);
-
+        bte_ssr_cleanup();
         usleep(10000); /* 10 milliseconds */
         /* Killing the process to force a restart as part of fault tolerance */
         kill(getpid(), SIGKILL);
@@ -2267,6 +2267,16 @@ static void btu_ble_ll_conn_complete_evt ( UINT8 *p, UINT16 evt_len)
 static void btu_ble_ll_conn_param_upd_evt (UINT8 *p, UINT16 evt_len)
 {
 /* This is empty until an upper layer cares about returning event */
+    //LE connection update has completed successfully as a master.
+    //We can enable the update request if the result is a success
+    //extract the HCI handle first
+    UINT8   status;
+    UINT16  handle;
+    BT_TRACE_0(TRACE_LAYER_HCI, TRACE_TYPE_EVENT, "btu_ble_ll_conn_param_upd_evt");
+
+    STREAM_TO_UINT8  (status, p);
+    STREAM_TO_UINT16 (handle, p);
+    L2CA_HandleConnUpdateEvent(handle, status);
 }
 
 static void btu_ble_read_remote_feat_evt (UINT8 *p, UINT16 evt_len)

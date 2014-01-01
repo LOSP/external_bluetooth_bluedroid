@@ -331,6 +331,10 @@ void smp_proc_sec_grant(tSMP_CB *p_cb, tSMP_INT_DATA *p_data)
     SMP_TRACE_DEBUG0 ("smp_proc_sec_grant ");
     if (res != SMP_SUCCESS)
     {
+        SMP_TRACE_DEBUG0("smp_proc_sec_grant: res is not success, sending auth_cmpl_evt");
+        //if result is not success, we need to mark the callback event as 0, so that the following callback
+        //doesnt cause another unintended event.
+        p_cb->cb_evt=0;
         smp_sm_event(p_cb, SMP_AUTH_CMPL_EVT, p_data);
     }
     else /*otherwise, start pairing */
@@ -901,12 +905,12 @@ void smp_pair_terminate(tSMP_CB *p_cb, tSMP_INT_DATA *p_data)
 *******************************************************************************/
 void smp_delay_terminate(tSMP_CB *p_cb, tSMP_INT_DATA *p_data)
 {
-    SMP_TRACE_DEBUG0 ("smp_delay_terminate ");
+    SMP_TRACE_DEBUG2 ("smp_delay_terminate reason=%d, status=%d",p_data->reason, p_cb->status);
 
     btu_stop_timer (&p_cb->rsp_timer_ent);
 
-    /* if remote user terminate connection, finish SMP pairing as normal */
-    if (p_data->reason == HCI_ERR_PEER_USER)
+    /* if remote user terminate connection and host did not cancel the pairing, finish SMP pairing as normal */
+    if (p_data->reason == HCI_ERR_PEER_USER && p_cb->status !=SMP_PAIR_FAIL_UNKNOWN)
         p_cb->status = SMP_SUCCESS;
     else
         p_cb->status = SMP_CONN_TOUT;

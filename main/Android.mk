@@ -26,10 +26,12 @@ LOCAL_SRC_FILES += \
     ../btif/src/btif_util.c \
     ../btif/src/btif_sm.c \
     ../btif/src/btif_hf.c \
+    ../btif/src/btif_hf_client.c \
     ../btif/src/btif_av.c \
     ../btif/src/btif_rc.c \
     ../btif/src/btif_media_task.c \
     ../btif/src/btif_hh.c \
+    ../btif/src/btif_hd.c \
     ../btif/src/btif_hl.c \
     ../btif/src/btif_sock.c \
     ../btif/src/btif_sock_rfc.c \
@@ -37,6 +39,7 @@ LOCAL_SRC_FILES += \
     ../btif/src/btif_sock_sdp.c \
     ../btif/src/btif_sock_util.c \
     ../btif/src/btif_pan.c \
+    ../btif/src/btif_mce.c \
     ../btif/src/btif_gatt.c \
     ../btif/src/btif_gatt_client.c \
     ../btif/src/btif_gatt_server.c \
@@ -44,7 +47,8 @@ LOCAL_SRC_FILES += \
     ../btif/src/btif_gatt_test.c \
     ../btif/src/btif_config.c \
     ../btif/src/btif_config_util.cpp \
-    ../btif/src/btif_profile_queue.c
+    ../btif/src/btif_profile_queue.c \
+    ../btif/src/bluetoothTrack.cpp
 
 # callouts
 LOCAL_SRC_FILES+= \
@@ -75,6 +79,7 @@ LOCAL_SRC_FILES+= \
 
 LOCAL_C_INCLUDES+= . \
 	$(LOCAL_PATH)/../bta/include \
+	$(LOCAL_PATH)/../btc/include \
 	$(LOCAL_PATH)/../bta/sys \
 	$(LOCAL_PATH)/../bta/dm \
 	$(LOCAL_PATH)/../gki/common \
@@ -97,6 +102,8 @@ LOCAL_C_INCLUDES+= . \
 	$(LOCAL_PATH)/../audio_a2dp_hw \
 	$(LOCAL_PATH)/../utils/include \
 	$(bdroid_C_INCLUDES) \
+	$(TARGET_OUT_HEADERS)/codecs/decoder/inc \
+	$(TOP)/frameworks/av/include/media \
 	external/tinyxml2
 
 LOCAL_CFLAGS += -DBUILDCFG $(bdroid_CFLAGS) -Werror -Wno-error=maybe-uninitialized -Wno-error=uninitialized -Wno-error=strict-aliasing
@@ -123,10 +130,12 @@ LOCAL_SHARED_LIBRARIES := \
     liblog \
     libpower \
     libbt-hci \
-    libbt-utils
+    libbt-utils \
+    libdl \
+    libmedia
 
 #LOCAL_WHOLE_STATIC_LIBRARIES := libbt-brcm_gki libbt-brcm_stack libbt-brcm_bta
-LOCAL_STATIC_LIBRARIES := libbt-brcm_gki libbt-brcm_bta libbt-brcm_stack libtinyxml2
+LOCAL_STATIC_LIBRARIES := libbt-brcm_gki libbt-brcm_bta libbt-brcm_stack libbt-btc libtinyxml2
 
 LOCAL_MODULE := bluetooth.default
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw

@@ -190,11 +190,48 @@ BOOLEAN L2CA_EnableUpdateBleConnParams (BD_ADDR rem_bda, BOOLEAN enable)
                 (UINT16) ((p_dev_rec->conn_params.supervision_tout != BTM_BLE_CONN_PARAM_UNDEF) ? p_dev_rec->conn_params.supervision_tout : BTM_BLE_CONN_TIMEOUT_DEF),
                 0, 0);
         }
-        p_lcb->upd_disabled = UPD_DISABLED;
+        if(p_lcb->upd_disabled!=UPD_PENDING)
+            p_lcb->upd_disabled = UPD_DISABLED;
     }
 
     return (TRUE);
 }
+
+/*******************************************************************************
+**
+** Function         L2CA_HandleConnUpdateEvent
+**
+** Description      This function enables the connection update request from remote
+**                  after a successful connection update response is received.
+**
+** Returns          void
+**
+*******************************************************************************/
+void L2CA_HandleConnUpdateEvent (UINT16 handle, UINT8 status)
+{
+    tL2C_LCB *p_lcb;
+    BD_ADDR rem_bda;
+
+    L2CAP_TRACE_DEBUG0("L2CA_HandleConnUpdateEvent");
+    if(status!=HCI_SUCCESS)//no action to be taken
+    {
+        L2CAP_TRACE_WARNING1("L2CA_EnableUpdateBleConnParams: connection update complete event recvd without success, status: %d", status);
+        return;
+    }
+
+    /* See if we have a link control block for the remote device */
+    p_lcb = l2cu_find_lcb_by_handle(handle);
+    if(!p_lcb)
+    {
+        L2CAP_TRACE_WARNING1("L2CA_EnableUpdateBleConnParams: Invalid handle: %d", handle);
+        return;
+    }
+    memcpy(rem_bda, p_lcb->remote_bd_addr, BD_ADDR_LEN);
+    L2CAP_TRACE_DEBUG1("L2CA_HandleConnUpdateEvent: upd_disabled=%d",p_lcb->upd_disabled);
+    if(p_lcb->upd_disabled == UPD_UPDATED)
+        L2CA_EnableUpdateBleConnParams (rem_bda, TRUE);
+}
+
 
 /*******************************************************************************
 **
@@ -297,6 +334,7 @@ void l2cble_scanner_conn_comp (UINT16 handle, BD_ADDR bda, tBLE_ADDR_TYPE type,
     p_lcb->link_role  = HCI_ROLE_MASTER;
     p_lcb->is_ble_link = TRUE;
 
+#if (!defined(BTA_BLE_SKIP_CONN_UPD) || BTA_BLE_SKIP_CONN_UPD == FALSE)
     /* If there are any preferred connection parameters, set them now */
     if ( (p_dev_rec->conn_params.min_conn_int     >= BTM_BLE_CONN_INT_MIN ) &&
          (p_dev_rec->conn_params.min_conn_int     <= BTM_BLE_CONN_INT_MAX ) &&
@@ -322,7 +360,7 @@ void l2cble_scanner_conn_comp (UINT16 handle, BD_ADDR bda, tBLE_ADDR_TYPE type,
                                            p_dev_rec->conn_params.supervision_tout,
                                            0, 0);
     }
-
+#endif
     /* Tell BTM Acl management about the link */
     btm_acl_created (bda, NULL, p_dev_rec->sec_bd_name, handle, p_lcb->link_role, TRUE);
 
