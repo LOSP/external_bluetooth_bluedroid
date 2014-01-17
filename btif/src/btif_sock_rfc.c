@@ -153,7 +153,6 @@ static void init_rfc_slots()
 bt_status_t btsock_rfc_init(int poll_thread_handle)
 {
     pth = poll_thread_handle;
-    btif_data_profile_register(0);
     init_rfc_slots();
     return BT_STATUS_SUCCESS;
 }
@@ -161,7 +160,6 @@ void btsock_rfc_cleanup()
 {
     int curr_pth = pth;
     pth = -1;
-    btif_data_profile_register(0);
     btsock_thread_exit(curr_pth);
     lock_slot(&slot_lock);
     int i;
@@ -280,15 +278,9 @@ static rfc_slot_t* alloc_rfc_slot(const bt_bdaddr_t *addr, const char* name, con
     int security = 0;
     if(flags & BTSOCK_FLAG_ENCRYPT)
         security |= server ? BTM_SEC_IN_ENCRYPT : BTM_SEC_OUT_ENCRYPT;
-    if(flags & BTSOCK_FLAG_AUTH) {
-        /* Convert SAP Authentication to High Authentication */
-        if(IS_UUID(UUID_SAP, uuid)) {
-            security |= BTM_SEC_IN_AUTH_HIGH;
-        }
-        else {
-            security |= server ? BTM_SEC_IN_AUTHENTICATE : BTM_SEC_OUT_AUTHENTICATE;
-        }
-    }
+    if(flags & BTSOCK_FLAG_AUTH)
+        security |= server ? BTM_SEC_IN_AUTHENTICATE : BTM_SEC_OUT_AUTHENTICATE;
+
     rfc_slot_t* rs = find_free_slot();
     if(rs)
     {
@@ -356,27 +348,15 @@ bt_status_t btsock_rfc_listen(const char* service_name, const uint8_t* service_u
     *sock_fd = -1;
     if(!is_init_done())
         return BT_STATUS_NOT_READY;
-
-    btif_data_profile_register(1);
-
-    if(channel == RESERVED_SCN_FTP)
-    {
-        service_uuid = UUID_FTP;
-    }
-    else if(is_uuid_empty(service_uuid))
+    if(is_uuid_empty(service_uuid))
         service_uuid = UUID_SPP; //use serial port profile to listen to specified channel
     else
     {
-       if (!strncmp(service_name, "OBEX File Transfer", strlen("OBEX File Transfer"))) {
-            channel = RESERVED_SCN_FTP;
-            APPL_TRACE_DEBUG1("Registering FTP SDP for: %s", service_name);
-        } else {
-            //Check the service_uuid. overwrite the channel # if reserved
-            int reserved_channel = get_reserved_rfc_channel(service_uuid);
-            if(reserved_channel > 0)
-            {
-                channel = reserved_channel;
-            }
+        //Check the service_uuid. overwrite the channel # if reserved
+        int reserved_channel = get_reserved_rfc_channel(service_uuid);
+        if(reserved_channel > 0)
+        {
+            channel = reserved_channel;
         }
     }
     int status = BT_STATUS_FAIL;
@@ -401,7 +381,8 @@ bt_status_t btsock_rfc_get_sockopt(int channel, btsock_option_type_t option_name
     int status = BT_STATUS_FAIL;
 
     APPL_TRACE_DEBUG1("btsock_rfc_get_sockopt channel is %d ", channel);
-    if((channel < 1) || (channel > 30) || (option_value == NULL) || (option_len == NULL))
+    if((channel < 1) || (channel > MAX_RFC_CHANNEL) || (option_value == NULL) ||
+                                                       (option_len == NULL))
     {
         APPL_TRACE_ERROR3("invalid rfc channel:%d or option_value:%p, option_len:%p",
                                              channel, option_value, option_len);
@@ -425,8 +406,8 @@ bt_status_t btsock_rfc_set_sockopt(int channel, btsock_option_type_t option_name
     int status = BT_STATUS_FAIL;
 
     APPL_TRACE_DEBUG1("btsock_rfc_get_sockopt channel is %d ", channel);
-    if((channel < 1) || (channel > 30) || (option_value == NULL) || (option_len <= 0)
-                     || (option_len > (int)sizeof(UINT8)))
+    if((channel < 1) || (channel > MAX_RFC_CHANNEL) || (option_value == NULL) ||
+       (option_len <= 0) || (option_len > (int)sizeof(UINT8)))
     {
         APPL_TRACE_ERROR3("invalid rfc channel:%d or option_value:%p, option_len:%d",
                                         channel, option_value, option_len);
@@ -632,7 +613,6 @@ static void cleanup_rfc_slot(rfc_slot_t* rs)
         close(rs->fd);
         rs->fd = -1;
     }
-
     if(rs->app_fd != -1)
     {
         close(rs->app_fd);

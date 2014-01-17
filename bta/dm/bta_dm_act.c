@@ -47,7 +47,7 @@ static void bta_dm_find_services ( BD_ADDR bd_addr);
 static void bta_dm_discover_next_device(void);
 static void bta_dm_sdp_callback (UINT16 sdp_status);
 static UINT8 bta_dm_authorize_cback (BD_ADDR bd_addr, DEV_CLASS dev_class, BD_NAME bd_name, UINT8 *service_name, UINT8 service_id, BOOLEAN is_originator);
-static UINT8 bta_dm_pin_cback (BD_ADDR bd_addr, DEV_CLASS dev_class, BD_NAME bd_name, BOOLEAN secure);
+static UINT8 bta_dm_pin_cback (BD_ADDR bd_addr, DEV_CLASS dev_class, BD_NAME bd_name);
 static UINT8 bta_dm_link_key_request_cback (BD_ADDR bd_addr, LINK_KEY key);
 static UINT8 bta_dm_new_link_key_cback(BD_ADDR bd_addr, DEV_CLASS dev_class, BD_NAME bd_name, LINK_KEY key, UINT8 key_type);
 static UINT8 bta_dm_authentication_complete_cback(BD_ADDR bd_addr, DEV_CLASS dev_class,BD_NAME bd_name, int result);
@@ -620,23 +620,7 @@ void bta_dm_set_afhchannels (tBTA_DM_MSG *p_data)
     BTM_SetAfhChannels(p_data->set_afhchannels.first,p_data->set_afhchannels.last);
 
 }
-/*******************************************************************************
-**
-** Function         bta_dm_hci_raw_command
-**
-** Description      Send a HCI RAW command to the controller
-**
-**
-** Returns          void
-**
-*******************************************************************************/
-void bta_dm_hci_raw_command (tBTA_DM_MSG *p_data)
-{
-    tBTM_STATUS status;
-    APPL_TRACE_API0("bta_dm_hci_raw_command");
-    status = BTM_Hci_Raw_Command(p_data->btc_command.opcode,p_data->btc_command.param_len,p_data->btc_command.p_param_buf, p_data->btc_command.p_cback);
 
-}
 
 /*******************************************************************************
 **
@@ -764,7 +748,7 @@ void bta_dm_add_device (tBTA_DM_MSG *p_data)
     }
 
     if (!BTM_SecAddDevice (p_dev->bd_addr, p_dc, p_dev->bd_name, p_dev->features,
-                           trusted_services_mask, p_lc, p_dev->key_type, p_dev->io_cap, p_dev->pin_len))
+                           trusted_services_mask, p_lc, p_dev->key_type, p_dev->io_cap))
     {
         APPL_TRACE_ERROR2 ("BTA_DM: Error adding device %08x%04x",
                 (p_dev->bd_addr[0]<<24)+(p_dev->bd_addr[1]<<16)+(p_dev->bd_addr[2]<<8)+p_dev->bd_addr[3],
@@ -1109,47 +1093,6 @@ void bta_dm_confirm(tBTA_DM_MSG *p_data)
     if(p_data->confirm.accept == TRUE)
         res = BTM_SUCCESS;
     BTM_ConfirmReqReply(res, p_data->confirm.bd_addr);
-}
-
-
-/*******************************************************************************
-**
-** Function         bta_dm_remote_name_cback
-**
-** Description      Callback function indicating remote request is completed
-**
-** Returns          void
-**
-*******************************************************************************/
-static void bta_dm_remote_name_cback (tBTM_REMOTE_DEV_NAME *p_remote_name)
-{
-    tBTA_DM_REM_NAME * p_msg;
-
-    APPL_TRACE_DEBUG2("bta_dm_remote_name_cback len = %d name=<%s>", p_remote_name->length,
-                      p_remote_name->remote_bd_name);
-
-    if (bta_dm_cb.p_rem_name_cback)
-    {
-        bta_dm_cb.p_rem_name_cback(p_remote_name);
-        bta_dm_cb.p_rem_name_cback = NULL;
-    }
-}
-
-/*******************************************************************************
-**
-** Function         bta_dm_remote_name
-**
-** Description      Send the remote name request to remote device
-**
-** Returns          void
-**
-*******************************************************************************/
-void bta_dm_remote_name(tBTA_DM_MSG *p_data)
-{
-    /* save callback */
-    bta_dm_cb.p_rem_name_cback = p_data->remote_name.p_cback;
-    BTM_ReadRemoteDeviceName (p_data->remote_name.bd_addr,
-                                           (tBTM_CMPL_CB *) bta_dm_remote_name_cback);
 }
 
 /*******************************************************************************
@@ -2837,9 +2780,6 @@ static void bta_dm_pinname_cback (void *p_data)
 
         /* 1 additional event data fields for this event */
         sec_event.cfm_req.just_works = bta_dm_cb.just_works;
-        /* retrieve the loc and rmt caps */
-        sec_event.cfm_req.loc_io_caps = bta_dm_cb.loc_io_caps;
-        sec_event.cfm_req.rmt_io_caps = bta_dm_cb.rmt_io_caps;
     }
     else
     {
@@ -2876,7 +2816,7 @@ static void bta_dm_pinname_cback (void *p_data)
 ** Returns          void
 **
 *******************************************************************************/
-static UINT8 bta_dm_pin_cback (BD_ADDR bd_addr, DEV_CLASS dev_class, BD_NAME bd_name, BOOLEAN secure)
+static UINT8 bta_dm_pin_cback (BD_ADDR bd_addr, DEV_CLASS dev_class, BD_NAME bd_name)
 {
     tBTA_DM_SEC sec_event;
 
@@ -2899,7 +2839,6 @@ static UINT8 bta_dm_pin_cback (BD_ADDR bd_addr, DEV_CLASS dev_class, BD_NAME bd_
     BTA_COPY_DEVICE_CLASS(sec_event.pin_req.dev_class, dev_class);
     BCM_STRNCPY_S((char*)sec_event.pin_req.bd_name, sizeof(BD_NAME), (char*)bd_name, (BD_NAME_LEN-1));
     sec_event.pin_req.bd_name[BD_NAME_LEN-1] = 0;
-    sec_event.pin_req.secure = secure;
 
     bta_dm_cb.p_sec_cback(BTA_DM_PIN_REQ_EVT, &sec_event);
     return BTM_CMD_STARTED;
@@ -3080,9 +3019,6 @@ static UINT8 bta_dm_sp_cback (tBTM_SP_EVT event, tBTM_SP_EVT_DATA *p_data)
         if (p_data->key_notif.bd_name[0] == 0)
         {
             bta_dm_cb.pin_evt = pin_evt;
-            /* Store the local and remote io caps */
-            bta_dm_cb.loc_io_caps = sec_event.cfm_req.loc_io_caps;
-            bta_dm_cb.rmt_io_caps = sec_event.cfm_req.rmt_io_caps;
             bdcpy(bta_dm_cb.pin_bd_addr, p_data->key_notif.bd_addr);
             BTA_COPY_DEVICE_CLASS(bta_dm_cb.pin_dev_class, p_data->key_notif.dev_class);
             if ((BTM_ReadRemoteDeviceName(p_data->key_notif.bd_addr, bta_dm_pinname_cback)) == BTM_CMD_STARTED)
@@ -4550,7 +4486,7 @@ void bta_dm_encrypt_cback(BD_ADDR bd_addr, void *p_ref_data, tBTM_STATUS result)
             break;
     }
 
-    APPL_TRACE_DEBUG3("bta_dm_encrypt_cback status =%d result=0x%x p_callback=0x%x", bta_status, result, p_callback);
+    APPL_TRACE_DEBUG2("bta_dm_encrypt_cback status =%d p_callback=0x%x", bta_status, p_callback);
 
     if (p_callback)
     {
@@ -4575,6 +4511,13 @@ void bta_dm_set_encryption (tBTA_DM_MSG *p_data)
         APPL_TRACE_ERROR0("bta_dm_set_encryption callback is not provided");
         return;
     }
+
+    if (bta_dm_cb.p_encrypt_cback)
+    {
+        (*p_data->set_encryption.p_callback)(p_data->set_encryption.bd_addr, BTA_BUSY);
+        return;
+    }
+
 
     bta_dm_cb.p_encrypt_cback = p_data->set_encryption.p_callback;
     bta_dm_cb.sec_act         = p_data->set_encryption.sec_act;
@@ -5038,37 +4981,6 @@ void bta_dm_ble_observe (tBTA_DM_MSG *p_data)
         BTM_BleObserve(FALSE, 0, NULL,NULL );
     }
 }
-
-void bta_dm_ble_observe_with_filter(tBTA_DM_MSG *p_data)
-{
-    tBTM_STATUS status;
-    APPL_TRACE_API2("%s Parameter %p enter\n", __FUNCTION__, p_data);
-    if(p_data && p_data->ble_observe_with_filter.start)
-    {
-        /* save call back to report scan results */
-        bta_dm_search_cb.p_scan_cback = p_data->ble_observe_with_filter.p_cback;
-        if((status = BTM_BleObserve_With_Filter(TRUE, p_data->ble_observe_with_filter.duration, p_data->ble_observe_with_filter.filters,
-                                                 p_data->ble_observe_with_filter.filtercnt, p_data->ble_observe_with_filter.scan_policy,
-                                                 bta_dm_observe_results_cb, bta_dm_observe_cmpl_cb)) != BTM_SUCCESS)
-        {
-            tBTA_DM_SEARCH  data;
-            APPL_TRACE_WARNING2(" %s BTM_BleObserve_With_Filter  failed. status %d",__FUNCTION__,status);
-            data.inq_cmpl.num_resps = 0;
-            if (bta_dm_search_cb.p_scan_cback)
-            {
-                bta_dm_search_cb.p_scan_cback(BTA_DM_INQ_CMPL_EVT, &data);
-            }
-        }
-    }
-    else
-    {
-        bta_dm_search_cb.p_scan_cback = NULL;
-        BTM_BleObserve_With_Filter(FALSE, 0, 0, 0, 0, NULL, NULL);
-    }
-
-    APPL_TRACE_API2("%s Parameter %p exit\n", __FUNCTION__, p_data);
-}
-
 /*******************************************************************************
 **
 ** Function         bta_dm_ble_set_scan_params
@@ -5103,7 +5015,7 @@ void bta_dm_ble_set_adv_config (tBTA_DM_MSG *p_data)
 
 #if ((defined BTA_GATT_INCLUDED) &&  (BTA_GATT_INCLUDED == TRUE))
 #ifndef BTA_DM_GATT_CLOSE_DELAY_TOUT
-#define BTA_DM_GATT_CLOSE_DELAY_TOUT    3000
+#define BTA_DM_GATT_CLOSE_DELAY_TOUT    1000
 #endif
 
 /*******************************************************************************

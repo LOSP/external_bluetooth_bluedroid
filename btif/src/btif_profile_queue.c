@@ -35,6 +35,11 @@
 **  Local type definitions
 *******************************************************************************/
 
+typedef enum {
+  BTIF_QUEUE_CONNECT_EVT,
+  BTIF_QUEUE_ADVANCE_EVT
+} btif_queue_event_t;
+
 typedef struct connect_node_tag
 {
     bt_bdaddr_t bda;
@@ -103,8 +108,6 @@ static bt_status_t queue_int_connect_next()
 
 static void queue_int_handle_evt(UINT16 event, char *p_param)
 {
-
-    BTIF_TRACE_VERBOSE2("%s, Event : 0x%x", __FUNCTION__, event);
     switch(event)
     {
         case BTIF_QUEUE_CONNECT_EVT:
@@ -113,13 +116,6 @@ static void queue_int_handle_evt(UINT16 event, char *p_param)
 
         case BTIF_QUEUE_ADVANCE_EVT:
             queue_int_advance();
-            break;
-        case BTIF_QUEUE_PENDING_CONECT_EVT:
-            queue_int_add((connect_node_t*)p_param);
-            return;
-            break;
-        default:
-            BTIF_TRACE_VERBOSE0("BTIF_QUEUE_PENDING_CONECT_ADVANCE_EVT");
             break;
     }
 
@@ -137,14 +133,15 @@ static void queue_int_handle_evt(UINT16 event, char *p_param)
 **
 *******************************************************************************/
 bt_status_t btif_queue_connect(uint16_t uuid, const bt_bdaddr_t *bda,
-                        btif_connect_cb_t *connect_cb, uint8_t queue_connect)
+                        btif_connect_cb_t *connect_cb)
 {
     connect_node_t node;
     memset(&node, 0, sizeof(connect_node_t));
     memcpy(&(node.bda), bda, sizeof(bt_bdaddr_t));
     node.uuid = uuid;
     node.p_cb = connect_cb;
-    return btif_transfer_context(queue_int_handle_evt, queue_connect,
+
+    return btif_transfer_context(queue_int_handle_evt, BTIF_QUEUE_CONNECT_EVT,
                           (char*)&node, sizeof(connect_node_t), NULL);
 }
 
@@ -161,21 +158,6 @@ bt_status_t btif_queue_connect(uint16_t uuid, const bt_bdaddr_t *bda,
 void btif_queue_advance()
 {
     btif_transfer_context(queue_int_handle_evt, BTIF_QUEUE_ADVANCE_EVT,
-                          NULL, 0, NULL);
-}
-/*******************************************************************************
-**
-** Function         btif_queue_pending_retry
-**
-** Description      Advance to the next scheduled connection.
-**
-** Returns          void
-**
-*******************************************************************************/
-void btif_queue_pending_retry()
-{
-    BTIF_TRACE_VERBOSE0("btif_queue_pending_retry");
-    btif_transfer_context(queue_int_handle_evt, BTIF_QUEUE_PENDING_CONECT_ADVANCE_EVT,
                           NULL, 0, NULL);
 }
 
