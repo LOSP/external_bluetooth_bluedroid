@@ -2,6 +2,8 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
+LOCAL_CFLAGS += $(bdroid_CFLAGS)
+
 LOCAL_SRC_FILES := \
         src/bt_hci_bdroid.c \
         src/lpm.c \
@@ -9,15 +11,15 @@ LOCAL_SRC_FILES := \
         src/btsnoop.c \
         src/utils.c
 
-ifeq ($(BLUETOOTH_HCI_USE_MCT),true)
+ifeq ($(QCOM_BT_USE_SMD_TTY),true)
 
-LOCAL_CFLAGS := -DHCI_USE_MCT
+LOCAL_CFLAGS += -DQCOM_WCN_SSR
 
-LOCAL_SRC_FILES += \
-        src/hci_mct.c \
-        src/userial_mct.c
+endif
 
-else
+ifeq ($(TARGET_BUILD_VARIANT), userdebug)
+  LOCAL_CFLAGS += -DBTSNOOP_EXT_PARSER_INCLUDED=TRUE
+endif
 
 ifeq ($(BLUETOOTH_HCI_USE_USB),true)
 
@@ -36,15 +38,21 @@ LOCAL_SHARED_LIBRARIES := \
 else
 
 LOCAL_SRC_FILES += \
-        src/hci_h4.c \
-        src/userial.c
+        src/userial.c \
+        src/userial_mct.c \
+        src/hci_mct.c \
+        src/hci_h4.c
 
+ifeq ($(QCOM_BT_USE_SIBS),true)
+LOCAL_SRC_FILES += src/hci_ibs.c
+LOCAL_CFLAGS += -DQCOM_BT_SIBS_ENABLE
 endif
 endif
 
 LOCAL_C_INCLUDES += \
         $(LOCAL_PATH)/include \
-        $(LOCAL_PATH)/../utils/include
+        $(LOCAL_PATH)/../utils/include \
+        $(bdroid_C_INCLUDES)
 
 LOCAL_SHARED_LIBRARIES += \
         libcutils \
